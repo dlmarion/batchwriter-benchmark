@@ -71,7 +71,7 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 @Warmup(iterations = 5)
-@Measurement(iterations = 5)
+@Measurement(iterations = 20)
 @Fork(1)
 @Threads(1)
 @BenchmarkMode(Mode.AverageTime)
@@ -148,18 +148,17 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
     @Benchmark
     public void testMethod() throws Exception {
       
-      try (AccumuloClient client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build()) {
-        BatchWriterConfig bwConfig = new BatchWriterConfig();
-        bwConfig.setDurability(Durability.DEFAULT);
-        bwConfig.setTimeout(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-        bwConfig.setMaxLatency(10, TimeUnit.SECONDS);
-        bwConfig.setMaxMemory(Long.parseLong(memory));
-        bwConfig.setMaxWriteThreads(1);
-        BatchWriter writer = client.createBatchWriter(TABLE_NAME, bwConfig);
-        if (mutations.hasNext()) {
+      BatchWriterConfig bwConfig = new BatchWriterConfig();
+      bwConfig.setDurability(Durability.DEFAULT);
+      bwConfig.setTimeout(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+      bwConfig.setMaxLatency(10, TimeUnit.SECONDS);
+      bwConfig.setMaxMemory(Long.parseLong(memory));
+      bwConfig.setMaxWriteThreads(10);
+      try (AccumuloClient client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build();
+          BatchWriter writer = client.createBatchWriter(TABLE_NAME, bwConfig);) {
+        while (mutations.hasNext()) {
           writer.addMutation(mutations.next());
         }
-        writer.close();
       }
 
     }

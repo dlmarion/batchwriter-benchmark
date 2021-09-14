@@ -8,18 +8,21 @@ Benchmark repo
 mvn clean package
 java -Xms4G -Xmx4G -server -jar /home/dlmari2/workspace/batchwriter-benchmark/target/benchmarks.jar
 
+Benchmark                 (memory)  (mutationSize)  (numMutations)  Mode  Cnt     Score     Error  Units
+MyBenchmarkIT.testMethod   1048576           10240            1000  avgt   20  1557.402 ± 708.998  ms/op
+
 Accumulo repo
 -------------
 git checkout 1120-improve-batch-writer-throughput
 mvn clean install -DskipTests -Dspotbugs.skip
-Benchmark                 (memory)  (mutationSize)  (numMutations)  Mode  Cnt     Score      Error  Units
-MyBenchmarkIT.testMethod   1048576           10240            1000  avgt    5  2610.277 ± 6118.640  ms/op
 
 
 Benchmark repo
 --------------
 mvn clean package
 java -Xms4G -Xmx4G -server -jar /home/dlmari2/workspace/batchwriter-benchmark/target/benchmarks.jar
-MyBenchmarkIT.testMethod   1048576           10240            1000  avgt    5  1767.564 ± 3024.302  ms/op
+
+Benchmark                 (memory)  (mutationSize)  (numMutations)  Mode  Cnt     Score     Error  Units
+MyBenchmarkIT.testMethod   1048576           10240            1000  avgt   20  1794.841 ± 740.496  ms/op
 
 
