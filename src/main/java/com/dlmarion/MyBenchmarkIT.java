@@ -75,7 +75,7 @@ import org.openjdk.jmh.annotations.Warmup;
 @Fork(1)
 @Threads(1)
 @BenchmarkMode(Mode.AverageTime)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterConfigurationCallback {
 
@@ -143,28 +143,30 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
         muts.add(m);
       }
       mutations = muts.iterator();
-    }
-
-    @Benchmark
-    public void testMethod() throws Exception {
-      
       BatchWriterConfig bwConfig = new BatchWriterConfig();
       bwConfig.setDurability(Durability.DEFAULT);
       bwConfig.setTimeout(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
       bwConfig.setMaxLatency(10, TimeUnit.SECONDS);
       bwConfig.setMaxMemory(Long.parseLong(memory));
-      bwConfig.setMaxWriteThreads(10);
-      try (AccumuloClient client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build();
-          BatchWriter writer = client.createBatchWriter(TABLE_NAME, bwConfig);) {
-        while (mutations.hasNext()) {
-          writer.addMutation(mutations.next());
-        }
-      }
+      bwConfig.setMaxWriteThreads(1);
+      client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build();
+      writer = client.createBatchWriter(TABLE_NAME, bwConfig);
+    }
+    
+    private AccumuloClient client = null;
+    private BatchWriter writer = null;
 
+    @Benchmark
+    public void testMethod() throws Exception {
+      while (mutations.hasNext()) {
+        writer.addMutation(mutations.next());
+      }
     }
     
     @TearDown
     public void tearDown() throws Exception {
+      writer.close();
+      client.close();
       boolean dataWasInserted = false;
       try (AccumuloClient client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build()) {
         Scanner s = client.createScanner(TABLE_NAME);
