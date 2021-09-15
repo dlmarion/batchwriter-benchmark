@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.accumulo.core.client.Accumulo;
@@ -47,6 +48,7 @@ import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.Durability;
 import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.client.admin.NewTableConfiguration;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
@@ -56,6 +58,7 @@ import org.apache.accumulo.harness.SharedMiniClusterBase;
 import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
+import org.apache.hadoop.io.Text;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -92,9 +95,12 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
 
   private Iterator<Mutation> mutations = null;
   
+  private static final int NUM_TSERVERS = 10;
+  
     @Override
     public void configureMiniCluster(MiniAccumuloConfigImpl cfg, Configuration coreSite) {
       cfg.setProperty(Property.TSERV_NATIVEMAP_ENABLED, Boolean.FALSE.toString());
+      cfg.setProperty(Property.TSERV_PORTSEARCH, Boolean.TRUE.toString());
       // use raw local file system so walogs sync and flush will work
       coreSite.set("fs.file.impl", RawLocalFileSystem.class.getName());
     }
@@ -116,10 +122,8 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
       });
       
       // Start our TServer that will not commit the compaction
-      SharedMiniClusterBase.getCluster().exec(BenchmarkTabletServer.class);
-      
-      try (AccumuloClient client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build()) {
-        client.tableOperations().create(TABLE_NAME);
+      for (int i = 0; i < NUM_TSERVERS; i++) {
+        SharedMiniClusterBase.getCluster().exec(BenchmarkTabletServer.class);
       }
 
       Integer count = Integer.parseInt(numMutations);
@@ -127,6 +131,7 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
       
       SecureRandom random = new SecureRandom();
       
+      TreeSet<Text> splits = new TreeSet<>();
       Integer size = Integer.parseInt(mutationSize);
       byte[] value = new byte[size];
       random.nextBytes(value);
@@ -141,15 +146,23 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
         Mutation m = new Mutation(row);
         m.put(colf, colq, System.currentTimeMillis(), value);
         muts.add(m);
+        if (count % NUM_TSERVERS == 0) {
+          splits.add(new Text(row));
+        }
       }
+      client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build();
+      NewTableConfiguration ntc = new NewTableConfiguration();
+      ntc.withSplits(splits);
+      client.tableOperations().create(TABLE_NAME, ntc);
+      client.instanceOperations().waitForBalance();
+      
       mutations = muts.iterator();
       BatchWriterConfig bwConfig = new BatchWriterConfig();
       bwConfig.setDurability(Durability.DEFAULT);
-      bwConfig.setTimeout(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+      bwConfig.setTimeout(0, TimeUnit.MILLISECONDS);
       bwConfig.setMaxLatency(10, TimeUnit.SECONDS);
       bwConfig.setMaxMemory(Long.parseLong(memory));
-      bwConfig.setMaxWriteThreads(1);
-      client = Accumulo.newClient().from(SharedMiniClusterBase.getCluster().getClientProperties()).build();
+      bwConfig.setMaxWriteThreads(NUM_TSERVERS);
       writer = client.createBatchWriter(TABLE_NAME, bwConfig);
     }
     
@@ -161,6 +174,7 @@ public class MyBenchmarkIT extends SharedMiniClusterBase implements MiniClusterC
       while (mutations.hasNext()) {
         writer.addMutation(mutations.next());
       }
+      writer.flush();
     }
     
     @TearDown
